@@ -39,12 +39,6 @@ start:
     pushl %ebx
 
     mov $initial_pages, %edi
-    mov $0, %eax
-    mov $438272, %ecx
-    cld
-    rep stosb
-
-    mov $initial_pages, %edi
 
     mov $0x1007, %eax
     add %edi, %eax
