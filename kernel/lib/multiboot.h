@@ -89,3 +89,10 @@ typedef struct multiboot_memory_map_entry_s {
     uint64_t len;
     uint32_t type;
 } __attribute__((packed)) multiboot_memory_map_t;
+
+typedef struct multiboot_module_s {
+    uint32_t mod_start;
+    uint32_t mod_end;
+    uint32_t cmdline;
+    uint32_t reserved;
+} __attribute__((packed)) multiboot_module_t;
