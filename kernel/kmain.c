@@ -3,6 +3,8 @@
 #include <video/vga_terminal.h>
 #include <cpu/gdt.h>
 #include <cpu/mmu.h>
+#include <cpu/idt.h>
+#include <cpu/pic.h>
 #include <lib/kprintf.h>
 #include <lib/string.h>
 
@@ -80,5 +82,9 @@ void kmain(struct multiboot* mboot, uint32_t magic, uintptr_t esp) {
     gdt_encode_entry(&gdt[4], 0, UINT32_MAX, 0xF2, 0x02);
     gdt_load(sizeof(gdt) - 1, gdt);
 
-    puts("Hello, world!");
+    idt_init();
+    pic_remap();
+
+    asm("sti");
+    puts("hello, world!");
 }
