@@ -64,5 +64,3 @@ size_t mmu_count_user(pagemap_entry_t* pml);
 size_t mmu_total_memory();
 size_t mmu_used_memory();
 void* mmu_heap_base();
-
-void* sbrk(size_t n);
