@@ -35,6 +35,11 @@ stack_top:
 start:
     mov $stack_top, %esp
     and $-16, %esp
+
+    pushl $0
+    pushl %esp
+    pushl $0
+    pushl %eax
     pushl $0
     pushl %ebx
 
@@ -81,9 +86,10 @@ start:
     lgdt gdtr
     ljmp $0x08, $long_entry
 
-.extern initial_pages
-
-.extern initial_pages:
+.global initial_pages
+.align 4096
+initial_pages:
+.skip 512 * 3 * 8
 
 .align 8
 gdtr:
@@ -120,7 +126,9 @@ long_entry:
     mov %ax, %ss
 .continue:
     cli
-    pop %rbx
+    pop %rdi
+    pop %rsi
+    pop %rdx
     callq kmain
 1:  hlt
     jmp 1b
