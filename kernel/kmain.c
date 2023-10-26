@@ -7,6 +7,7 @@
 #include <cpu/pic.h>
 #include <lib/kprintf.h>
 #include <lib/string.h>
+#include <lib/alloc.h>
 
 static struct multiboot* multiboot;
 static gdt_entry_t gdt[5] = {0};
@@ -72,6 +73,7 @@ void kmain(struct multiboot* mboot, uint32_t magic, uintptr_t esp) {
     multiboot_initialize();
 
     mmu_init(multiboot_memory_marker, highest_valid_address, highest_kernel_address);
+    heap_init(0x10);
 
     pat_init();
 
