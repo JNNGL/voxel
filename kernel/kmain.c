@@ -205,14 +205,14 @@ void kmain(struct multiboot* mboot, uint32_t magic, uintptr_t esp) {
     pic_remap();
     puts("cpu: initialized interrupts");
 
-    multiboot_module_t* mods = (multiboot_module_t*)(uintptr_t) multiboot->mods_addr;
-    fs_node_t* ramdisk_root = ramdiskfs_open(mmu_from_physical(mods->mod_start));
-    puts("fs: loaded ramdisk");
-
     process_tree_init();
     puts("proc: initialized process tree");
     multitasking_init();
     puts("proc: initialized multitasking");
+
+    multiboot_module_t* mods = (multiboot_module_t*)(uintptr_t) multiboot->mods_addr;
+    fs_node_t* ramdisk_root = ramdiskfs_open(mmu_from_physical(mods->mod_start));
+    puts("fs: loaded ramdisk");
 
     fs_root = tmpfs_create("/");
     puts("fs: mounted tmpfs on /");
