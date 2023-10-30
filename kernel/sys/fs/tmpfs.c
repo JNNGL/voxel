@@ -354,7 +354,7 @@ static int unlink_tmpfs(fs_node_t* node, char* name) {
         if (!strcmp(name, f->name)) {
             if (f->type == TMPFS_TYPE_DIR) {
                 if (((struct tmpfs_dir*) f)->files) {
-                    return -ENOEMPTY;
+                    return -ENOTEMPTY;
                 }
             } else {
                 tmpfs_free_file(f);
