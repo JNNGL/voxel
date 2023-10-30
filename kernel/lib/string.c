@@ -1,5 +1,7 @@
 #include "string.h"
 
+#include <lib/alloc.h>
+
 size_t strlen(const char* str) {
     size_t len = 0;
     while (str[len]) {
@@ -24,12 +26,16 @@ char* strcpy(char* dst, const char* src) {
     return ptr;
 }
 
-//char* strdup(const char* str) {
-//    size_t len = strlen(str) + 1;
-//    char* newstr = malloc(len);
-//    memcpy(newstr, str, len);
-//    return newstr;
-//}
+char* strdup(const char* str) {
+    if (!str) {
+        return 0;
+    }
+
+    size_t len = strlen(str) + 1;
+    char* newstr = malloc(len);
+    memcpy(newstr, str, len);
+    return newstr;
+}
 
 void* memset(void* ptr, int value, size_t size) {
     asm volatile("cld; rep stosb" : "+c"(size), "+D"(ptr) : "a"(value) : "memory");
