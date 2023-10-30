@@ -1,6 +1,7 @@
 #include "alloc.h"
 
 #include <cpu/mmu.h>
+#include <lib/string.h>
 
 typedef struct heap_seg_hdr_s {
     size_t length;
@@ -142,6 +143,16 @@ void* kmalloc(size_t size) {
 
 void* malloc(size_t size) {
     return kmalloc(size);
+}
+
+void* realloc(void* ptr, size_t s) {
+    // TODO: Better implementation
+    void* new = malloc(s);
+    heap_seg_hdr_t* segment = (heap_seg_hdr_t*) ptr - 1;
+    size_t to_copy = segment->length < s ? segment->length : s;
+    memcpy(new, ptr, to_copy);
+    free(ptr);
+    return new;
 }
 
 void free(void* address) {
