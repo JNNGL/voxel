@@ -5,13 +5,19 @@
 #include <cpu/mmu.h>
 #include <cpu/idt.h>
 #include <cpu/pic.h>
+#include <cpu/timer.h>
+#include <sys/fs/ramdiskfs.h>
+#include <sys/fs/tmpfs.h>
+#include <sys/fs/vfs.h>
+#include <sys/process.h>
 #include <lib/kprintf.h>
 #include <lib/string.h>
 #include <lib/alloc.h>
-#include <sys/fs/ramdiskfs.h>
+#include <lib/elf.h>
 
 static struct multiboot* multiboot;
-static gdt_entry_t gdt[5] = {0};
+static gdt_entry_t gdt[7] = {0};
+static tss_entry_t tss;
 
 extern char end[];
 static uintptr_t highest_valid_address = 0;
@@ -70,48 +76,101 @@ void pat_init() {
                  "wrmsr" : : : "ecx", "edx", "eax");
 }
 
-void ramdisk_dump(fs_node_t* root_node, int level) {
-    int i = 0;
-    struct dirent* dirent = 0;
-    while ((dirent = readdir_fs(root_node, i)) != 0) {
-        kprintf("\n");
-        for (int i = 0; i < level; i++) {
-            kprintf("- ");
+void copy_directory(fs_node_t* to, fs_node_t* from) {
+    if (!to) {
+        puts("fs: invalid target directory");
+        return;
+    }
+
+    if (!from) {
+        puts("fs: invalid input directory");
+        return;
+    }
+
+    struct dirent* dirent;
+    size_t i = 0;
+    while (1) {
+        dirent = readdir_fs(from, i++);
+        if (!dirent) {
+            return;
         }
-        kprintf("%s ", dirent->name);
-        fs_node_t* node_ptr = finddir_fs(root_node, dirent->name);
-        if (node_ptr) {
-            fs_node_t node = *node_ptr;
-            switch (node.flags) {
-                case FS_FILE:
-                    kprintf("(file) ");
-                    char buf[1024];
-                    buf[read_fs(&node, 0, 1023, buf)] = 0;
-                    kprintf("%s ", buf);
-                    break;
 
-                case FS_DIRECTORY:
-                    kprintf("(directory) ");
-                    ramdisk_dump(&node, level + 1);
-                    break;
+        kprintf("fs: copying <...>/%s/%s\n", from->name, dirent->name);
 
-                case FS_SYMLINK:
-                    kprintf("(symlink) ");
-                    break;
+        fs_node_t* node = finddir_fs(from, dirent->name);
+        if (!node) {
+            free(dirent);
+            kprintf("fs: unable to find file <...>/%s/%s\n", from->name, dirent->name);
+            continue;
+        }
+
+        if (node->flags & FS_FILE) {
+            if (!to->mkdir) {
+                kprintf("fs: unable to create file in <...>/%s\n", from->name);
+                goto skip;
             }
+            if (to->create(to, node->name, 0777)) { // TODO: create wrapper
+                kprintf("fs: unable to create file <...>/%s/%s\n", from->name, node->name);
+                goto skip;
+            }
+            fs_node_t* target = finddir_fs(to, node->name);
+            uint8_t buf[1024];
+            size_t offset = 0;
+            size_t remaining = node->length;
+            while (remaining) {
+                size_t to_copy = remaining > sizeof(buf) ? sizeof(buf) : remaining;
+                to_copy = read_fs(node, offset, to_copy, buf);
+                if (to_copy > sizeof(buf) || to_copy > remaining) {
+                    kprintf("fs: unable to read file <...>/%s/%s\n", from->name, node->name);
+                    free(target);
+                    goto skip;
+                }
+                size_t to_write = to_copy;
+                while (to_write) {
+                    size_t written = write_fs(target, offset + to_copy - to_write, to_write, buf);
+                    if (written > to_write) {
+                        kprintf("fs: unable to write file <...>/%s/%s\n", from->name, node->name);
+                        free(target);
+                        goto skip;
+                    }
+
+                    to_write -= written;
+                }
+                remaining -= to_copy;
+                offset += to_copy;
+
+            }
+            free(target);
+        } else if (node->flags & FS_DIRECTORY) {
+            if (!to->mkdir) {
+                kprintf("fs: unable to create directory in <...>/%s/\n", from->name);
+                goto skip;
+            }
+            if (to->mkdir(to, node->name, 0777)) { // TODO: mkdir wrapper
+                kprintf("fs: unable to create directory <...>/%s/%s\n", from->name, node->name);
+                goto skip;
+            }
+            fs_node_t* target = finddir_fs(to, node->name);
+            copy_directory(target, node);
+            free(target);
+        } else {
+            kprintf("fs: skipping file <...>/%s/%s\n", from->name, node->name);
         }
-        ++i;
+
+        skip:
+        free(dirent);
+        free(node);
     }
 }
 
 void kmain(struct multiboot* mboot, uint32_t magic, uintptr_t esp) {
     if (magic != MULTIBOOT_EAX_MAGIC) {
-        puts("Invalid magic.");
+        puts("multiboot: invalid magic.");
         return;
     }
 
     if (!(mboot->flags & MULTIBOOT_FLAG_MODS)) {
-        puts("No modules found.");
+        puts("multiboot: no modules found.");
         return;
     }
 
@@ -119,34 +178,58 @@ void kmain(struct multiboot* mboot, uint32_t magic, uintptr_t esp) {
 
     terminal = vga_terminal;
     terminal_init();
+    puts("video: initialized vga terminal");
 
     multiboot_initialize();
+    puts("cpu: initialized multiboot");
 
     mmu_init(multiboot_memory_marker, highest_valid_address, highest_kernel_address);
     heap_init(0x10);
+    puts("cpu: initialized mmu/heap");
+
+    multiboot = mmu_from_physical((uintptr_t) multiboot);
 
     pat_init();
 
+    extern void* stack_top;
     gdt_encode_entry(&gdt[0], 0, 0, 0, 0);
     gdt_encode_entry(&gdt[1], 0, UINT32_MAX, 0x9A, 0x02);
     gdt_encode_entry(&gdt[2], 0, UINT32_MAX, 0x92, 0x02);
     gdt_encode_entry(&gdt[3], 0, UINT32_MAX, 0xFA, 0x02);
     gdt_encode_entry(&gdt[4], 0, UINT32_MAX, 0xF2, 0x02);
+    tss_encode(&gdt[5], &tss, stack_top);
     gdt_load(sizeof(gdt) - 1, gdt);
+    puts("cpu: initialized gdt");
 
     idt_init();
     pic_remap();
+    puts("cpu: initialized interrupts");
 
     multiboot_module_t* mods = (multiboot_module_t*)(uintptr_t) multiboot->mods_addr;
     fs_node_t* ramdisk_root = ramdiskfs_open(mmu_from_physical(mods->mod_start));
+    puts("cpu: loaded ramdisk");
 
-    puts("RAMDISK");
-    puts("=======");
+    process_tree_init();
+    puts("proc: initialized process tree");
+    multitasking_init();
+    puts("proc: initialized multitasking");
 
-    ramdisk_dump(ramdisk_root, 0);
+    fs_root = tmpfs_create("/");
+    puts("fs: mounted tmpfs on /");
 
-    puts("\n\n=======");
+    copy_directory(fs_root, ramdisk_root);
+    puts("fs: copied ramdisk contents to /");
 
-    asm("sti");
-    puts("hello, world!");
+    timer_init(50);
+
+    const char* init_path = "/bin/init";
+    fs_node_t* init_node = kopen(init_path, 0);
+    if (init_node) {
+        kprintf("proc: yielding control to %s\n", init_path);
+        const char* argv[] = {init_path};
+        const char* envp[] = {0};
+        elf_exec(init_path, init_node, 0, argv, envp);
+    } else {
+        kprintf("fs: %s not found.", init_path);
+    }
 }

@@ -21,4 +21,6 @@ gdt_flush:
     mov %ax, %fs
     mov %ax, %gs
     mov %ax, %ss
+    mov $0x2B, %ax
+    ltr %ax
     ret

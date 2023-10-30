@@ -1,3 +1,10 @@
+# Build output
 build
+
+# Bochs
 .bochsrc
 bochsout.txt
+
+# Ramdisk binaries
+ramdisk_base/etc/init.d
+ramdisk_base/bin
