@@ -75,7 +75,7 @@ IRQ 12, 44
 IRQ 13, 45
 IRQ 14, 46
 IRQ 15, 47
-ISR_NOERR 127
+ISR_NOERR 128
 
 .global _isr2
 .type _isr2, @function

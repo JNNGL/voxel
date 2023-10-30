@@ -1,6 +1,7 @@
 #include "idt.h"
 
 #include <lib/terminal.h>
+#include <lib/kprintf.h>
 #include <cpu/mmu.h>
 #include <cpu/pic.h>
 
@@ -66,7 +67,7 @@ extern struct regs* _isr123(struct regs*);
 extern struct regs* _isr124(struct regs*);
 extern struct regs* _isr125(struct regs*);
 extern struct regs* _isr126(struct regs*);
-extern struct regs* _isr127(struct regs*);
+extern struct regs* _isr128(struct regs*);
 
 void idt_set_gate(uint8_t n, interrupt_handler_t handler, uint16_t selector, uint8_t flags, int userspace) {
     uintptr_t base = (uintptr_t) handler;
@@ -137,7 +138,7 @@ void idt_init() {
     idt_set_gate(124, _isr124, 0x08, 0x8E, 0);
     idt_set_gate(125, _isr125, 0x08, 0x8E, 0);
     idt_set_gate(126, _isr126, 0x08, 0x8E, 0);
-    idt_set_gate(127, _isr127, 0x08, 0x8E, 1);
+    idt_set_gate(128, _isr128, 0x08, 0x8E, 1);
 
     asm volatile("lidt %0" : : "m"(idt_pointer));
 }
@@ -166,16 +167,22 @@ static void page_fault(struct regs* r) {
     asm volatile("mov %%cr2, %0" : "=r"(faulting_address));
 
     if ((r->err_code & 0x03) == 0x03) {
-        puts("cow");
-        return;
+        if (!mmu_copy_on_write(faulting_address)) {
+            return;
+        }
     }
 
     if (r->cs == 0x08) {
-        puts("Page Fault (kernel)");
+        kprintf("Page Fault (kernel) at %llx\n", faulting_address);
+        while (1);
+    } else {
+        kprintf("User page fault at %llx\n", faulting_address); // TODO: SIGSEGV
     }
 }
 
 static struct regs* syscall(struct regs* r) {
+    kprintf("syscall stub a=%llx b=%llx\n", r->rax, r->rbx);
+    while (1);
     asm volatile("sti");
     return r;
 }
@@ -248,7 +255,7 @@ struct regs* isr_handler(struct regs* r) {
         case 45: _irq(45);
         case 46: _irq(46);
         case 47: _irq(47);
-        case 127: return syscall(r);
+        case 128: return syscall(r);
         default:
             puts("Unexpected interrupt"); // TODO
             break;
