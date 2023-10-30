@@ -12,6 +12,8 @@
 #define FS_SYMLINK     0x06
 #define FS_MOUNTPOINT  0x08
 
+#define OPEN_FLAG_PARENT 0x10000000
+
 struct fs_node;
 
 typedef size_t(*read_type_t)(struct fs_node*, size_t, size_t, uint8_t*);
@@ -22,8 +24,8 @@ typedef int(*truncate_type_t)(struct fs_node*);
 typedef int(*create_type_t)(struct fs_node*, char*, int);
 typedef int(*mkdir_type_t)(struct fs_node*, char*, int);
 typedef int(*symlink_type_t)(struct fs_node*, char*, char*);
-typedef int(*unlink_type_t)(struct fs_node* node, char*);
-typedef size_t(*readlink_type_t)(struct fs_node* node, char*, size_t);
+typedef int(*unlink_type_t)(struct fs_node*, char*);
+typedef size_t(*readlink_type_t)(struct fs_node*, char*, size_t);
 typedef int(*chmod_type_t)(struct fs_node*, int);
 typedef int(*chown_type_t)(struct fs_node*, int, int);
 typedef struct dirent*(*readdir_type_t)(struct fs_node*, size_t);
@@ -63,7 +65,20 @@ size_t read_fs(fs_node_t* node, size_t offset, size_t size, uint8_t* buffer);
 size_t write_fs(fs_node_t* node, size_t offset, size_t size, uint8_t* buffer);
 void open_fs(fs_node_t* node, uint32_t flags);
 void close_fs(fs_node_t* node);
+int truncate_fs(fs_node_t* node);
+int create_fs(fs_node_t* node, char* name, int mode);
+int mkdir_fs(fs_node_t* node, char* name, int mode);
+int symlink_fs(fs_node_t* node, char* target, char* name);
+int unlink_fs(fs_node_t* node, char* name);
+size_t readlink_fs(fs_node_t* node, char* buf, size_t size);
+int chmod_fs(fs_node_t* node, int mode);
+int chown_fs(fs_node_t* node, int uid, int gid);
 struct dirent* readdir_fs(fs_node_t* node, size_t index);
 fs_node_t* finddir_fs(fs_node_t* node, char* name);
+
+int create_file(char* name, int mode);
+int mkdir(char* name, int mode);
+int symlink(char* target, char* name);
+int unlink(char* name);
 
 fs_node_t* kopen(const char* filename, unsigned int flags);

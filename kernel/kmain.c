@@ -104,16 +104,18 @@ void copy_directory(fs_node_t* to, fs_node_t* from) {
             continue;
         }
 
+        open_fs(node, 0);
         if (node->flags & FS_FILE) {
-            if (!to->mkdir) {
-                kprintf("fs: unable to create file in <...>/%s\n", from->name);
-                goto skip;
-            }
-            if (to->create(to, node->name, 0777)) { // TODO: create wrapper
+            if (create_fs(to, node->name, 0777)) {
                 kprintf("fs: unable to create file <...>/%s/%s\n", from->name, node->name);
                 goto skip;
             }
             fs_node_t* target = finddir_fs(to, node->name);
+            if (!target) {
+                kprintf("fs: unable to create file in <...>/%s", to->name);
+                goto skip;
+            }
+            open_fs(target, 0);
             uint8_t buf[1024];
             size_t offset = 0;
             size_t remaining = node->length;
@@ -122,6 +124,7 @@ void copy_directory(fs_node_t* to, fs_node_t* from) {
                 to_copy = read_fs(node, offset, to_copy, buf);
                 if (to_copy > sizeof(buf) || to_copy > remaining) {
                     kprintf("fs: unable to read file <...>/%s/%s\n", from->name, node->name);
+                    close_fs(target);
                     free(target);
                     goto skip;
                 }
@@ -130,6 +133,7 @@ void copy_directory(fs_node_t* to, fs_node_t* from) {
                     size_t written = write_fs(target, offset + to_copy - to_write, to_write, buf);
                     if (written > to_write) {
                         kprintf("fs: unable to write file <...>/%s/%s\n", from->name, node->name);
+                        close_fs(target);
                         free(target);
                         goto skip;
                     }
@@ -138,26 +142,29 @@ void copy_directory(fs_node_t* to, fs_node_t* from) {
                 }
                 remaining -= to_copy;
                 offset += to_copy;
-
             }
+            close_fs(target);
             free(target);
         } else if (node->flags & FS_DIRECTORY) {
-            if (!to->mkdir) {
-                kprintf("fs: unable to create directory in <...>/%s/\n", from->name);
-                goto skip;
-            }
-            if (to->mkdir(to, node->name, 0777)) { // TODO: mkdir wrapper
+            if (mkdir_fs(to, node->name, 0777)) {
                 kprintf("fs: unable to create directory <...>/%s/%s\n", from->name, node->name);
                 goto skip;
             }
             fs_node_t* target = finddir_fs(to, node->name);
+            if (!target) {
+                kprintf("fs: unable to create directory in <...>/%s/\n", from->name);
+                goto skip;
+            }
+            open_fs(target, 0);
             copy_directory(target, node);
+            close_fs(target);
             free(target);
         } else {
             kprintf("fs: skipping file <...>/%s/%s\n", from->name, node->name);
         }
 
         skip:
+        close_fs(node);
         free(dirent);
         free(node);
     }
