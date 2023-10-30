@@ -86,10 +86,7 @@ start:
     lgdt gdtr
     ljmp $0x08, $long_entry
 
-.global initial_pages
-.align 4096
-initial_pages:
-.skip 512 * 3 * 8
+.extern initial_pages
 
 .align 8
 gdtr:
