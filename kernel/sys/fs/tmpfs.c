@@ -1,6 +1,7 @@
 #include "tmpfs.h"
 
 #include <sys/process.h>
+#include <sys/errno.h>
 #include <lib/alloc.h>
 #include <lib/string.h>
 #include <lib/kprintf.h>
@@ -42,7 +43,7 @@ static int symlink_tmpfs(fs_node_t* parent, char* target, char* name) {
     for (struct tmpfs_flist* node = d->files; node; node = node->next) {
         struct tmpfs_file* f = node->file;
         if (!strcmp(name, f->name)) {
-            return -3; // -EEXIST
+            return -EEXIST;
         }
     }
 
@@ -353,7 +354,7 @@ static int unlink_tmpfs(fs_node_t* node, char* name) {
         if (!strcmp(name, f->name)) {
             if (f->type == TMPFS_TYPE_DIR) {
                 if (((struct tmpfs_dir*) f)->files) {
-                    return -5; // -ENOEMPTY
+                    return -ENOEMPTY;
                 }
             } else {
                 tmpfs_free_file(f);
@@ -372,12 +373,12 @@ static int unlink_tmpfs(fs_node_t* node, char* name) {
         prev = node;
     }
 
-    return -2; // -ENOENT
+    return -ENOENT;
 }
 
 static int create_tmpfs(fs_node_t* parent, char* name, int mode) {
     if (!name) {
-        return -1; // -EINVAL
+        return -EINVAL;
     }
 
     struct tmpfs_dir* d = (struct tmpfs_dir*) parent->device;
@@ -385,7 +386,7 @@ static int create_tmpfs(fs_node_t* parent, char* name, int mode) {
     for (struct tmpfs_flist* node = d->files; node; node = node->next) {
         struct tmpfs_file* f = node->file;
         if (!strcmp(name, f->name)) {
-            return -3; // -EEXIST
+            return -EEXIST;
         }
     }
 
@@ -401,11 +402,11 @@ static int create_tmpfs(fs_node_t* parent, char* name, int mode) {
 
 static int mkdir_tmpfs(fs_node_t* parent, char* name, int mode) {
     if (!name) {
-        return -1; // -EINVAL;
+        return -EINVAL;
     }
 
     if (!strlen(name)) {
-        return -1; // -EINVAL;
+        return -EINVAL;
     }
 
     struct tmpfs_dir* d = (struct tmpfs_dir*) parent->device;
@@ -413,7 +414,7 @@ static int mkdir_tmpfs(fs_node_t* parent, char* name, int mode) {
     for (struct tmpfs_flist* node = d->files; node; node = node->next) {
         struct tmpfs_file* f = node->file;
         if (!strcmp(name, f->name)) {
-            return -3; // -EEXIST
+            return -EEXIST;
         }
     }
 

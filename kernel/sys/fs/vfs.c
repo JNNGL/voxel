@@ -1,6 +1,7 @@
 #include "vfs.h"
 
 #include <sys/process.h>
+#include <sys/errno.h>
 #include <lib/alloc.h>
 #include <lib/string.h>
 #include <lib/kprintf.h>
@@ -141,20 +142,20 @@ fs_node_t* finddir_fs(fs_node_t* node, char* name) {
 
 int create_file(char* name, int mode) {
     if (!name || !*name) {
-        return -1; // -EINVAL
+        return -EINVAL;
     }
 
     if (!strcmp(name, "/")) {
-        return -4; // -EEXIST
+        return -EEXIST;
     }
 
     fs_node_t* parent = kopen(name, OPEN_FLAG_PARENT);
     if (!parent) {
-        return -2; // -ENOENT
+        return -ENOENT;
     }
 
     if (!check_permission(parent, 02)) {
-        return -6; // -EACCES
+        return -EACCES;
     }
 
     char* filename = name;
@@ -172,14 +173,14 @@ int create_file(char* name, int mode) {
     fs_node_t* this = finddir_fs(parent, filename);
     if (this) {
         free(this);
-        return -4; // -EEXIST
+        return -EEXIST;
     }
 
     int result;
     if (parent->create) {
         result = parent->create(parent, filename, mode);
     } else {
-        result = -1; // -EINVAL
+        result = -EROFS;
     }
 
     close_fs(parent);
@@ -190,16 +191,16 @@ int create_file(char* name, int mode) {
 
 int mkdir(char* name, int mode) {
     if (!name || !*name) {
-        return -1; // -EINVAL
+        return -EINVAL;
     }
 
     fs_node_t* parent = kopen(name, OPEN_FLAG_PARENT);
     if (!parent) {
-        return -2; // -ENOENT
+        return -ENOENT;
     }
 
     if (!check_permission(parent, 02)) {
-        return -6; // -EACCES
+        return -EACCES;
     }
 
     char* filename = name;
@@ -217,14 +218,14 @@ int mkdir(char* name, int mode) {
     fs_node_t* this = finddir_fs(parent, filename);
     if (this) {
         free(this);
-        return -4; // -EEXIST
+        return -EEXIST;
     }
 
     int result;
     if (parent->mkdir) {
         result = parent->mkdir(parent, filename, mode);
     } else {
-        result = -3; // -EROFS
+        result = -EROFS;
     }
 
     close_fs(parent);
@@ -235,16 +236,16 @@ int mkdir(char* name, int mode) {
 
 int symlink(char* target, char* name) {
     if (!name || !*name) {
-        return -1; // -EINVAL
+        return -EINVAL;
     }
 
     fs_node_t* parent = kopen(name, OPEN_FLAG_PARENT);
     if (!parent) {
-        return -2; // -ENOENT
+        return -ENOENT;
     }
 
     if (!check_permission(parent, 02)) {
-        return -6; // -EACCES
+        return -EACCES;
     }
 
     char* filename = name;
@@ -263,7 +264,7 @@ int symlink(char* target, char* name) {
     if (parent->symlink) {
         result = parent->symlink(parent, target, filename);
     } else {
-        result = -1; // -EINVAL
+        result = -EINVAL;
     }
 
     close_fs(parent);
@@ -274,16 +275,16 @@ int symlink(char* target, char* name) {
 
 int unlink(char* name) {
     if (!name || !*name) {
-        return -1; // -EINVAL
+        return -EINVAL;
     }
 
     fs_node_t* parent = kopen(name, OPEN_FLAG_PARENT);
     if (!parent) {
-        return -2; // -ENOENT
+        return -ENOENT;
     }
 
     if (!check_permission(parent, 02)) {
-        return -6; // -EACCES
+        return -EACCES;
     }
 
     char* filename = name;
@@ -302,7 +303,7 @@ int unlink(char* name) {
     if (parent->unlink) {
         result = parent->unlink(parent, filename);
     } else {
-        result = -1; // -EINVAL
+        result = -EINVAL;
     }
 
     close_fs(parent);
