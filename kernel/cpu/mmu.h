@@ -38,6 +38,8 @@ typedef struct pagemap_entry_s {
     uint64_t noexec : 1;
 } pagemap_entry_t;
 
+extern volatile pagemap_entry_t* current_pml;
+
 void mmu_init(void(*memory_marker)(), size_t mem_size, uintptr_t first_page);
 
 void mmu_lock_frame(uintptr_t frame_addr);
@@ -59,6 +61,7 @@ pagemap_entry_t* mmu_kernel_directory();
 void* mmu_from_physical(uintptr_t frame);
 void* mmu_map_mmio(uintptr_t phys_addr, size_t size);
 pagemap_entry_t* mmu_lookup_frame_from(pagemap_entry_t* pml, uintptr_t virt_addr);
+int mmu_copy_on_write(uintptr_t address);
 
 size_t mmu_count_user(pagemap_entry_t* pml);
 size_t mmu_total_memory();

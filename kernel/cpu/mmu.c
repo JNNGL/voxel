@@ -24,7 +24,7 @@
 #define bit_index(b) ((b) >> 5)
 #define bit_offset(b) ((b) & 0x1F)
 
-static volatile pagemap_entry_t* current_pml;
+volatile pagemap_entry_t* current_pml;
 static volatile uint32_t* frames;
 static size_t n_frames;
 static size_t total_memory = 0;
@@ -34,7 +34,7 @@ static uint8_t* mem_refcounts = 0;
 static uintptr_t lowest_available = 0;
 static uintptr_t mmio_base_address = MMIO_BASE_START;
 
-extern pagemap_entry_t initial_pages[3][512];
+pagemap_entry_t initial_pages[3][512] __attribute__((aligned(PAGE_SIZE))) = {0};
 pagemap_entry_t high_base_pml[512] __attribute__((aligned(PAGE_SIZE))) = {0};
 pagemap_entry_t heap_base_pml[512] __attribute__((aligned(PAGE_SIZE))) = {0};
 pagemap_entry_t heap_base_pd[512] __attribute__((aligned(PAGE_SIZE))) = {0};
@@ -192,12 +192,12 @@ uintptr_t mmu_request_frames(int n) {
 
 uintptr_t mmu_request_frame() {
     for (uintptr_t i = bit_index(lowest_available); i < bit_index(n_frames); ++i) {
-        if (frames[i] != (uint32_t) -1) {
+        if (frames[i] != UINT32_MAX) {
             for (uintptr_t j = 0; j < 32; ++j) {
                 uint32_t frame = 1U << j;
                 if (!(frames[i] & frame)) {
-                    uintptr_t out = (i << PAGE_SHIFT) + j;
-                    lowest_available = out;
+                    uintptr_t out = (i << 5) + j;
+                    lowest_available = out + 1;
                     return out;
                 }
             }
@@ -286,11 +286,11 @@ pagemap_entry_t* mmu_lookup_frame(uintptr_t virt_addr, int flags) {
         uintptr_t new_page = mmu_request_frame() << PAGE_SHIFT;
         mmu_lock_frame(new_page);
         memset(mmu_from_physical(new_page), 0, PAGE_SIZE);
-        *(uint64_t*) &pdp[pdp_entry] = new_page | USER_PML_ACCESS;
+        *(uint64_t*) &pd[pd_entry] = new_page | USER_PML_ACCESS;
     }
 
     if (pd[pd_entry].size) {
-        return NULL;
+        return 0;
     }
 
     pagemap_entry_t* pt = mmu_from_physical((uintptr_t) pd[pd_entry].page << PAGE_SHIFT);
@@ -422,6 +422,7 @@ pagemap_entry_t* mmu_clone(pagemap_entry_t* pml) {
         if (pml[i].present) {
             pagemap_entry_t* pdp_in = mmu_from_physical((uintptr_t) pml[i].page << PAGE_SHIFT);
             uintptr_t new_page = mmu_request_frame() << PAGE_SHIFT;
+            mmu_lock_frame(new_page);
             pagemap_entry_t* pdp_out = mmu_from_physical(new_page);
             memset(pdp_out, 0, 512 * sizeof(pagemap_entry_t));
             *(uint64_t*) &pml4_out[i] = new_page | USER_PML_ACCESS;
@@ -430,6 +431,7 @@ pagemap_entry_t* mmu_clone(pagemap_entry_t* pml) {
                 if (pdp_in[j].present) {
                     pagemap_entry_t* pd_in = mmu_from_physical((uintptr_t) pdp_in[j].page << PAGE_SHIFT);
                     uintptr_t new_page = mmu_request_frame() << PAGE_SHIFT;
+                    mmu_lock_frame(new_page);
                     pagemap_entry_t* pd_out = mmu_from_physical(new_page);
                     memset(pd_out, 0, 512 * sizeof(pagemap_entry_t));
                     *(uint64_t*) &pdp_out[j] = new_page | USER_PML_ACCESS;
@@ -438,9 +440,10 @@ pagemap_entry_t* mmu_clone(pagemap_entry_t* pml) {
                         if (pd_in[k].present) {
                             pagemap_entry_t* pt_in = mmu_from_physical((uintptr_t) pd_in[k].page << PAGE_SHIFT);
                             uintptr_t new_page = mmu_request_frame() << PAGE_SHIFT;
+                            mmu_lock_frame(new_page);
                             pagemap_entry_t* pt_out = mmu_from_physical(new_page);
                             memset(pt_out, 0, 512 * sizeof(pagemap_entry_t));
-                            *(uint64_t*) &pdp_out[k] = new_page | USER_PML_ACCESS;
+                            *(uint64_t*) &pd_out[k] = new_page | USER_PML_ACCESS;
 
                             for (size_t l = 0; l < 512; ++l) {
                                 uintptr_t address = (i << (9 * 3 + 12)) | (j << (9 * 2 + 12)) | (k << (9 + 12)) | (l << PAGE_SHIFT);
@@ -536,6 +539,40 @@ pagemap_entry_t* mmu_lookup_frame_from(pagemap_entry_t* pml, uintptr_t virt_addr
 
     pagemap_entry_t* pt = mmu_from_physical((uintptr_t) pd[pd_entry].page << PAGE_SHIFT);
     return &pt[pt_entry];
+}
+
+int mmu_copy_on_write(uintptr_t address) {
+    pagemap_entry_t* page = mmu_lookup_frame(address, 0);
+
+    if (!page->cow) {
+        return 1;
+    }
+
+    uint8_t refs = _refcount_decrease(page->page);
+    if (refs == 0) {
+        page->writable = 1;
+        page->cow = 0;
+        asm("" ::: "memory");
+        mmu_invalidate(address);
+        return 0;
+    }
+
+    uintptr_t faulting_frame = page->page;
+    uintptr_t fresh_frame = mmu_request_frame();
+    mmu_lock_frame(fresh_frame << PAGE_SHIFT);
+
+    char* page_in = mmu_from_physical(faulting_frame << PAGE_SHIFT);
+    char* page_out = mmu_from_physical(fresh_frame << PAGE_SHIFT);
+    memcpy(page_out, page_in, PAGE_SIZE);
+
+    page->page = fresh_frame;
+    page->writable = 1;
+    page->cow = 0;
+
+    asm("" ::: "memory");
+
+    mmu_invalidate(address);
+    return 0;
 }
 
 size_t mmu_count_user(pagemap_entry_t* pml) {
