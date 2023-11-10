@@ -22,6 +22,7 @@ int decode_switches(int argc, const char** args) {
             usage();
         }
 
+        ++arg;
         for (const char* p = arg; *p; p++) {
             switch (*p) {
                 case 'a':
