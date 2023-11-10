@@ -4,6 +4,7 @@
 #include <cpu/gdt.h>
 #include <cpu/userspace.h>
 #include <sys/process.h>
+#include <sys/errno.h>
 #include <lib/alloc.h>
 #include <lib/string.h>
 #include <lib/terminal.h>
@@ -18,6 +19,7 @@ int elf_exec(const char* path, fs_node_t* file, int argc, const char* argv[], co
         header.e_ident[2] != ELFMAG2 ||
         header.e_ident[3] != ELFMAG3) {
         close_fs(file);
+        free(file);
         puts("elf: invalid magic");
         return 0;
     }
@@ -81,11 +83,10 @@ int elf_exec(const char* path, fs_node_t* file, int argc, const char* argv[], co
     *((type*) userstack) = val;            \
 }
 
-#define USERSTACK_PUSHSTR(s) {        \
-    size_t l = strlen(s);             \
-    do {                              \
-        USERSTACK_PUSH(char, s[l--]); \
-    } while (l >= 0);                 \
+#define USERSTACK_PUSHSTR(s) {             \
+    for (int l = strlen(s); l >= 0; l--) { \
+        USERSTACK_PUSH(char, s[l]);        \
+    }                                      \
 }
 
     char* argv_ptrs[argc];
@@ -118,18 +119,18 @@ int elf_exec(const char* path, fs_node_t* file, int argc, const char* argv[], co
     for (int i = envc; i > 0; i--) {
         USERSTACK_PUSH(char*, envp_ptrs[i - 1]);
     }
-
     char** user_envp = (char**) userstack;
+
     USERSTACK_PUSH(uintptr_t, 0);
     for (int i = argc; i > 0; i--) {
         USERSTACK_PUSH(char*, argv_ptrs[i - 1]);
     }
-
     char** user_argv = (char**) userstack;
+
     USERSTACK_PUSH(uintptr_t, argc);
 
     set_kernel_stack(current_process->image.stack);
     enter_userspace(header.e_entry, argc, user_argv, user_envp, userstack);
 
-    return 0;
+    return -EINVAL;
 }

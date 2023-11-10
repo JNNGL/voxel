@@ -15,12 +15,19 @@ char** __get_argv() {
 }
 
 void _exit(int rval) {
+    extern void __stdio_free();
+    __stdio_free();
+
     _fini();
     asm volatile("int $0x80" : : "a"(0), "b"(rval));
     __builtin_unreachable();
 }
 
+__attribute__((constructor))
 void _libc_init() {
+    extern void __stdio_init();
+    __stdio_init();
+
     uint32_t zeros = 0;
     for (uint32_t x = 0; 1; ++x) {
         if (!__get_argv()[x]) {
@@ -52,7 +59,12 @@ void _libc_init() {
 void _main(int argc, char* argv[], char** envp, int(*main)(int, char**)) {
     if (!__get_argv()) {
         __argv = argv;
-        _libc_init(); // TODO: Fix global constructors
+
+        extern uintptr_t __init_array_start;
+        extern uintptr_t __init_array_end;
+        for (uintptr_t* ctor = &__init_array_start; ctor < &__init_array_end; ++ctor) {
+            ((void(*)(void)) *ctor)();
+        }
     }
 
     _init();

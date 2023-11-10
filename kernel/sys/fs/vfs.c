@@ -6,7 +6,14 @@
 #include <lib/string.h>
 #include <lib/kprintf.h>
 
-fs_node_t* fs_root = 0;
+fs_node_t* fs_root = 0; // TODO: Should we mount root as a regular mountpoint?
+
+static struct {
+    const char* path;
+    fs_node_t* node;
+}* mountpoints;
+static size_t mountpoints_size;
+static size_t mountpoints_capacity;
 
 int check_permission(fs_node_t* node, int perm) {
     if (!node) {
@@ -57,6 +64,14 @@ void open_fs(fs_node_t* node, uint32_t flags) {
 void close_fs(fs_node_t* node) {
     if (node->close) {
         node->close(node);
+    }
+}
+
+int ioctl_fs(fs_node_t* node, size_t cmd, void* arg) {
+    if (node->ioctl) {
+        return node->ioctl(node, cmd, arg);
+    } else {
+        return 0;
     }
 }
 
@@ -140,6 +155,51 @@ fs_node_t* finddir_fs(fs_node_t* node, char* name) {
     }
 }
 
+void vfs_init() {
+    mountpoints_capacity = 32;
+    mountpoints_size = 0;
+    mountpoints = malloc(sizeof(*mountpoints) * mountpoints_capacity);
+}
+
+fs_node_t* vfs_get_mountpoint(const char* path) {
+    if (!path) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < mountpoints_size; i++) {
+        if (!strcmp(mountpoints[i].path, path)) {
+            fs_node_t* node = malloc(sizeof(fs_node_t));
+            memcpy(node, mountpoints[i].node, sizeof(*node));
+            return node;
+        }
+    }
+
+    return 0;
+}
+
+int vfs_mount(char* path, fs_node_t* target) {
+    if (!path || !target) {
+        return -EINVAL;
+    }
+
+    // TODO: Better implementation
+    int result = create_file(path, 0);
+    if (result) {
+        return result;
+    }
+
+    if (mountpoints_size >= mountpoints_capacity) {
+        mountpoints_capacity += 32;
+        mountpoints = realloc(mountpoints, sizeof(*mountpoints) * mountpoints_capacity);
+    }
+
+    mountpoints[mountpoints_size].path = path;
+    mountpoints[mountpoints_size].node = target;
+    ++mountpoints_size;
+
+    return 0;
+}
+
 int create_file(char* name, int mode) {
     if (!name || !*name) {
         return -EINVAL;
@@ -184,7 +244,6 @@ int create_file(char* name, int mode) {
     }
 
     close_fs(parent);
-    free(parent);
     free(filename);
     return result;
 }
@@ -312,24 +371,15 @@ int unlink(char* name) {
     return result;
 }
 
-fs_node_t* _kopen(const char* filename, unsigned int flags, fs_node_t* root, fs_node_t* wd) {
+fs_node_t* _kopen(const char* filename, unsigned int flags, fs_node_t* wd) {
     if (!filename) {
-        return 0;
-    }
-
-    if (!root) {
-        kprintf("kopen: root is not mounted\n");
         return 0;
     }
 
     char* name = strdup(filename);
     char* nodename = name;
 
-    if (*name == '/') {
-        if (wd && wd != root) {
-            free(wd);
-        }
-        wd = root;
+    while (*nodename == '/') {
         ++nodename;
     }
 
@@ -338,6 +388,10 @@ fs_node_t* _kopen(const char* filename, unsigned int flags, fs_node_t* root, fs_
         free(name);
         return 0;
     }
+
+    fs_node_t* root = malloc(sizeof(fs_node_t));
+    memcpy(root, wd, sizeof(*root));
+    wd = root;
 
     if (!*nodename) {
         free(name);
@@ -353,20 +407,24 @@ fs_node_t* _kopen(const char* filename, unsigned int flags, fs_node_t* root, fs_
             char token = *p;
             if (!token && flags & OPEN_FLAG_PARENT) {
                 free(name);
-                return wd;
+                if (wd->ptr) {
+                    return wd->ptr;
+                } else {
+                    return wd;
+                }
             }
-            *p++ = 0;
-            fs_node_t* node = finddir_fs(wd, nodename);
+            *p = 0;
+            fs_node_t* node = vfs_get_mountpoint(name);
+            if (!node) {
+                node = finddir_fs(wd, nodename);
+            }
             if (!*nodename) {
                 if (node) {
                     free(node);
                 }
                 node = wd;
             } else {
-                if (wd != root) {
-                    close_fs(wd);
-                    free(wd);
-                }
+                free(wd);
                 if (!node) {
                     free(name);
                     return 0;
@@ -383,12 +441,13 @@ fs_node_t* _kopen(const char* filename, unsigned int flags, fs_node_t* root, fs_
                 free(name);
                 return wd;
             }
-
+            *p++ = '/';
             nodename = p;
         }
     }
 }
 
 fs_node_t* kopen(const char* filename, unsigned int flags) {
-    return _kopen(filename, flags, fs_root, _kopen(current_process->pwd, flags & ~OPEN_FLAG_PARENT, fs_root, fs_root));
+    // TODO: Relative paths
+    return _kopen(filename, flags, fs_root);
 }

@@ -2,7 +2,10 @@
 
 #include <cpu/mmu.h>
 #include <lib/string.h>
+#include <lib/terminal.h>
 
+/*   This segment-based allocator is unstable and causes page faults
+ *   that are difficult to debug, so I postponed it until better times.
 typedef struct heap_seg_hdr_s {
     size_t length;
     struct heap_seg_hdr_s* next;
@@ -140,24 +143,102 @@ void* kmalloc(size_t size) {
     heap_expand(size);
     return kmalloc(size);
 }
+*/
 
+#define ALLOC_MAGIC 0xA77C
+
+struct alloc_info {
+    uint16_t magic;
+    uintptr_t ptr;
+    size_t size;
+};
+
+void heap_init(size_t page_count) {
+    // For compatibility.
+}
+
+// TODO: Write a better allocator
 void* malloc(size_t size) {
-    return kmalloc(size);
+    size_t unaligned_size = size;
+    size += sizeof(struct alloc_info);
+    if (size % 0x1000) {
+        size -= size % 0x1000;
+        size += 0x1000;
+    }
+
+    size_t pages = size / 0x1000;
+    void* ptr = (void*) (mmu_request_frames(pages) << 12);
+    for (size_t i = 0; i < pages; i++) {
+        mmu_lock_frame((uintptr_t) ptr + i * 0x1000);
+    }
+
+    struct alloc_info* vptr = mmu_from_physical((uintptr_t) ptr);
+    vptr->magic = ALLOC_MAGIC;
+    vptr->ptr = (uintptr_t) ptr;
+    vptr->size = unaligned_size;
+
+    return vptr + 1;
+
+//    return kmalloc(size); // FIXME
 }
 
 void* realloc(void* ptr, size_t s) {
     // TODO: Better implementation
+    if (!ptr) {
+        return 0;
+    }
+
+    if (!s) {
+        free(ptr);
+        return 0;
+    }
+
     void* new = malloc(s);
-    heap_seg_hdr_t* segment = (heap_seg_hdr_t*) ptr - 1;
-    size_t to_copy = segment->length < s ? segment->length : s;
-    memcpy(new, ptr, to_copy);
+//    heap_seg_hdr_t* segment = (heap_seg_hdr_t*) ptr - 1; // FIXME
+//    size_t to_copy = segment->length < s ? segment->length : s;
+    struct alloc_info* info = (struct alloc_info*) ptr - 1;
+    if (info->magic != ALLOC_MAGIC) {
+        puts("realloc: invalid pointer");
+        return 0;
+    }
+    memcpy(new, ptr, info->size < s ? info->size : s);
     free(ptr);
     return new;
 }
 
-void free(void* address) {
-    heap_seg_hdr_t* segment = (heap_seg_hdr_t*) address - 1;
-    segment->free = 1;
-    heap_combine_forward(segment);
-    heap_combine_backward(segment);
+void free(void* ptr) {
+    if (!ptr) {
+        return;
+    }
+
+    struct alloc_info* info = (struct alloc_info*) ptr - 1;
+    if (info->magic != ALLOC_MAGIC) {
+        puts("free: invalid pointer");
+        return;
+    }
+
+    size_t phys = info->ptr;
+    size_t size = info->size + sizeof(struct alloc_info);
+    if (size % 0x1000) {
+        size -= size % 0x1000;
+        size += 0x1000;
+    }
+
+    size_t pages = size / 0x1000;
+    for (size_t i = 0; i < pages; i++) {
+        mmu_release_frame(phys + i * 0x1000);
+    }
+
+//    if (!address) { // FIXME
+//        return;
+//    }
+//
+//    heap_seg_hdr_t* segment = (heap_seg_hdr_t*) address - 1;
+//    if (segment->free) {
+//        puts("free: invalid segement");
+//        return;
+//    }
+//    segment->free = 1;
+//    heap_combine_forward(segment);
+//    heap_combine_backward(segment);
 }

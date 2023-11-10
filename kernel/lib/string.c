@@ -134,3 +134,29 @@ void* memcpy(void* dst, const void* src, size_t n) {
     asm volatile("cld; rep movsb" : "+c"(n), "+S"(src), "+D"(dst) : : "memory");
     return dst;
 }
+
+void* memmove(void* dst, const void* src, size_t n) {
+    uint8_t* from = (uint8_t*) src;
+    uint8_t* to = (uint8_t*) dst;
+
+    if (from == to || n == 0) {
+        return dst;
+    }
+
+    if (to > from && to - from < n) {
+        for (intptr_t i = n - 1; i >= 0; i--) {
+            to[i] = from[i];
+        }
+
+        return dst;
+    } else if (from > to && from - to < n) {
+        for (intptr_t i = 0; i < n; i++) {
+            to[i] = from[i];
+        }
+
+        return dst;
+    } else {
+        memcpy(dst, src, n);
+        return dst;
+    }
+}

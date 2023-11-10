@@ -5,6 +5,7 @@ build
 .bochsrc
 bochsout.txt
 
-# Ramdisk binaries
+# Ramdisk binaries and other files
 ramdisk_base/etc/init.d
 ramdisk_base/bin
+ramdisk_base/usr/include

@@ -2,6 +2,8 @@ rwildcard=$(wildcard $(addsuffix $2, $1)) $(foreach d,$(wildcard $(addsuffix *, 
 
 BUILDDIR=build
 
+RAMDISK_BASE=ramdisk_base
+
 GENERAL_CFLAGS=-c -nostdlib -fno-builtin -ffreestanding
 GENERAL_LDFLAGS=-nostdlib
 
@@ -20,7 +22,7 @@ CRT_OBJECTS=$(CRT_SOURCES:%=$(BUILDDIR)/%.o) $(shell $(CC) -print-file-name=crtb
 LIBC_SOURCES=$(filter-out $(CRT_SOURCES),$(LIBC_CRT_SOURCES))
 LIBC_OBJECTS=$(LIBC_SOURCES:%=$(BUILDDIR)/%.o)
 
-libc_CFLAGS=$(GENERAL_CFLAGS) -fno-stack-protector -I $(LIBC_DIR)
+libc_CFLAGS=$(GENERAL_CFLAGS) -fno-stack-protector -I $(LIBC_DIR)/include -fPIC -nostdinc
 LIBC_LDFLAGS=$(GENERAL_LDFLAGS) -shared
 
 HOST_CC=gcc
@@ -58,15 +60,27 @@ iso: ramdisk
 bochs: all
 	bochs -f .bochsrc
 
+qemu: all
+	qemu-system-x86_64 -m 512M -cdrom $(BUILDDIR)/voxel.iso
+
+install_headers:
+	rm -rf $(RAMDISK_BASE)/usr/include
+	mkdir -p $(RAMDISK_BASE)/usr
+	cp -rf libc/include $(RAMDISK_BASE)/usr
+
 .PHONY: ramdiskfs_tool
 ramdiskfs_tool:
 	$(HOST_CC) $(HOST_CFLAGS) -o $(BUILDDIR)/ramdisk.mkfs ramdiskfs_tool/ramdiskfs.c ramdiskfs_tool/main.c
 
 .PHONY: ramdisk
-ramdisk: ramdiskfs_tool
-	mkdir -p ramdisk_base/bin
-	cp -f $(BUILDDIR)/userspace/init ramdisk_base/bin
-	$(BUILDDIR)/ramdisk.mkfs --label=RAMDISK ramdisk_base $(BUILDDIR)/voxel-ramdisk
+ramdisk: ramdiskfs_tool install_headers
+	mkdir -p $(RAMDISK_BASE)/bin
+	cp -f $(BUILDDIR)/userspace/init $(RAMDISK_BASE)/bin
+	cp -f $(BUILDDIR)/userspace/sh $(RAMDISK_BASE)/bin
+	cp -f $(BUILDDIR)/userspace/hello $(RAMDISK_BASE)/bin
+	cp -f $(BUILDDIR)/userspace/ls $(RAMDISK_BASE)/bin
+	cp -f $(BUILDDIR)/userspace/uname $(RAMDISK_BASE)/bin
+	$(BUILDDIR)/ramdisk.mkfs --label=RAMDISK $(RAMDISK_BASE) $(BUILDDIR)/voxel-ramdisk
 
 $(BUILDDIR)/%.c.o: %.c
 	@mkdir -p $(@D)
@@ -78,7 +92,23 @@ $(BUILDDIR)/%.s.o: %.s
 
 $(BUILDDIR)/userspace/init:
 	@mkdir -p $(@D)
-	$(CC) $(CRT_OBJECTS) userspace/init.c -o $@ -nostdlib -ffreestanding
+	$(CC) -I $(LIBC_DIR)/include userspace/init.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+
+$(BUILDDIR)/userspace/sh:
+	@mkdir -p $(@D)
+	$(CC) -I $(LIBC_DIR)/include userspace/sh.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+
+$(BUILDDIR)/userspace/hello:
+	@mkdir -p $(@D)
+	$(CC) -I $(LIBC_DIR)/include userspace/hello.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+
+$(BUILDDIR)/userspace/ls:
+	@mkdir -p $(@D)
+	$(CC) -I $(LIBC_DIR)/include userspace/ls.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+
+$(BUILDDIR)/userspace/uname:
+	@mkdir -p $(@D)
+	$(CC) -I $(LIBC_DIR)/include userspace/uname.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
 
 .PHONY: userspace
-userspace: $(BUILDDIR)/userspace/init
+userspace: $(BUILDDIR)/userspace/init $(BUILDDIR)/userspace/sh $(BUILDDIR)/userspace/hello $(BUILDDIR)/userspace/ls $(BUILDDIR)/userspace/uname

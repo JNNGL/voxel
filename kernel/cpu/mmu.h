@@ -62,6 +62,7 @@ void* mmu_from_physical(uintptr_t frame);
 void* mmu_map_mmio(uintptr_t phys_addr, size_t size);
 pagemap_entry_t* mmu_lookup_frame_from(pagemap_entry_t* pml, uintptr_t virt_addr);
 int mmu_copy_on_write(uintptr_t address);
+int mmu_validate_user(void* addr, size_t size, int flags);
 
 size_t mmu_count_user(pagemap_entry_t* pml);
 size_t mmu_total_memory();

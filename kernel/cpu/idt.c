@@ -1,5 +1,6 @@
 #include "idt.h"
 
+#include <sys/syscall.h>
 #include <lib/terminal.h>
 #include <lib/kprintf.h>
 #include <cpu/mmu.h>
@@ -181,8 +182,7 @@ static void page_fault(struct regs* r) {
 }
 
 static struct regs* syscall(struct regs* r) {
-    kprintf("syscall stub a=%llx b=%llx\n", r->rax, r->rbx);
-    while (1);
+    syscall_handler(r);
     asm volatile("sti");
     return r;
 }

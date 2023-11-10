@@ -2,20 +2,12 @@
 
 #include <sys/fs/vfs.h>
 
-struct tmpfs_file;
-
-struct tmpfs_flist {
-    struct tmpfs_file* file;
-    struct tmpfs_flist* next;
-};
-
 struct tmpfs_file {
     char* name;
     int type;
     int mask;
     int uid;
     int gid;
-    struct tmpfs_flist list_node;
     size_t length;
     size_t block_count;
     size_t pointers;
@@ -29,8 +21,9 @@ struct tmpfs_dir {
     int mask;
     int uid;
     int gid;
-    struct tmpfs_flist list_node;
-    struct tmpfs_flist* files;
+    struct tmpfs_file** files;
+    size_t files_capacity;
+    size_t files_count;
     struct tmpfs_dir* parent;
 };
 

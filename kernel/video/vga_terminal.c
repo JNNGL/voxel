@@ -5,7 +5,7 @@
 
 uint8_t terminal_color;
 uint16_t* terminal_buffer;
-uint8_t stack_terminal_buffer[VGA_WIDTH * VGA_HEIGHT];
+uint8_t vga_membuffer[VGA_WIDTH * VGA_HEIGHT];
 
 terminal_t vga_terminal = {.init = vga_terminal_init, .putchar = vga_terminal_putchar, .clear = vga_terminal_clear_terminal, .rows = VGA_HEIGHT, .columns = VGA_HEIGHT};
 
@@ -34,7 +34,7 @@ static inline uint16_t terminal_vga_entry(unsigned char c, uint8_t color) {
 
 void vga_terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y) {
     terminal_buffer[y * VGA_WIDTH + x] = terminal_vga_entry(c, color);
-    stack_terminal_buffer[y * VGA_WIDTH + x] = c;
+    vga_membuffer[y * VGA_WIDTH + x] = c;
 }
 
 void vga_terminal_putchar(char c) {
@@ -70,6 +70,6 @@ void vga_terminal_clear_terminal() {
     }
 }
 
-uint8_t* vga_get_stack_buffer() {
-    return stack_terminal_buffer;
+uint8_t* vga_get_membuffer() {
+    return vga_membuffer;
 }

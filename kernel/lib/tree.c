@@ -73,6 +73,7 @@ void tree_insert_node(tree_t* parent, tree_t* node) {
 
     struct tree_child* child = malloc(sizeof(struct tree_child));
     memset(child, 0, sizeof(struct tree_child));
+    child->value = node;
 
     struct tree_child* children = parent->children;
     if (children) {

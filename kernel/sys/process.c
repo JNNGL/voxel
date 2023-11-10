@@ -1,11 +1,13 @@
 #include "process.h"
 
+#include <cpu/gdt.h>
 #include <lib/string.h>
 #include <lib/alloc.h>
 #include <lib/tree.h>
 
 static volatile struct process_queue* process_queue = 0;
 static volatile struct process_queue* process_queue_end = 0;
+static volatile struct process_queue* delete_queue = 0;
 
 tree_t* process_tree;
 volatile process_t* current_process;
@@ -23,6 +25,72 @@ int get_next_pid() {
     return ++_current_pid;
 }
 
+static uint8_t pid_comparator(void* pid, void* proc) {
+    if (!pid || !proc) {
+        return 0;
+    }
+    return ((process_t*) proc)->pid == *(int*) pid;
+}
+
+process_t* get_process(int pid) {
+    tree_t* tree = tree_find(process_tree, &pid, pid_comparator);
+    if (tree) {
+        return tree->value;
+    } else {
+        return 0;
+    }
+}
+
+int append_process_fd(fs_node_t* node) {
+    if (current_process->fd_length == current_process->fd_capacity) {
+        current_process->fd_capacity += 64;
+        current_process->fds = realloc(current_process->fds, sizeof(fs_node_t*) * current_process->fd_capacity);
+    }
+
+    // TODO: Check for empty entries
+    int fd = current_process->fd_length++;
+    current_process->fds[fd] = node;
+    return fd;
+}
+
+fs_node_t* get_process_fd(int fd) {
+    if (fd >= current_process->fd_length || fd < 0) {
+        return 0;
+    }
+
+    return current_process->fds[fd];
+}
+
+long process_dup2(int from, int to) {
+    fs_node_t* node = get_process_fd(from);
+    if (!node) {
+        return -1;
+    }
+
+    if (to == -1) {
+        fs_node_t* clone = malloc(sizeof(fs_node_t));
+        memcpy(clone, node, sizeof(fs_node_t));
+        open_fs(clone, 0);
+        return append_process_fd(clone);
+    }
+
+    if (to >= current_process->fd_length || to < 0) {
+        return -1;
+    }
+
+    fs_node_t* oldnode = current_process->fds[to];
+    if (oldnode) {
+        close_fs(oldnode);
+        free(oldnode);
+    }
+
+    fs_node_t* clone = malloc(sizeof(fs_node_t));
+    memcpy(clone, node, sizeof(fs_node_t));
+    current_process->fds[to] = clone;
+    open_fs(clone, 0);
+    return to;
+}
+
 process_t* spawn_init() {
     process_t* init = malloc(sizeof(process_t));
     memset(init, 0, sizeof(process_t));
@@ -38,6 +106,9 @@ process_t* spawn_init() {
         init->pwd_node = malloc(sizeof(fs_node_t));
         memcpy(init->pwd_node, fs_root, sizeof(fs_node_t));
     }
+    init->fd_capacity = 32;
+    init->fd_length = 0;
+    init->fds = malloc(sizeof(fs_node_t*) * init->fd_capacity);
     init->image.entry = 0;
     init->image.heap = 0;
     init->image.stack = (mmu_request_frames(9) << 12) + 0x9000;
@@ -45,7 +116,7 @@ process_t* spawn_init() {
         mmu_lock_frame(init->image.stack - 0x1000 * i);
     }
     init->image.stack = (uintptr_t) mmu_from_physical(init->image.stack);
-    init->thread.page_directory = (pagemap_entry_t*) current_pml;
+    init->thread.page_directory = mmu_clone(0);
     init->queue_node.process = init;
     return init;
 }
@@ -107,6 +178,18 @@ process_t* spawn_process(volatile process_t* parent, int flags) {
         proc->pwd_node = malloc(sizeof(fs_node_t));
         memcpy(proc->pwd_node, parent->pwd_node, sizeof(fs_node_t));
     }
+    proc->fd_capacity = parent->fd_capacity;
+    proc->fd_length = parent->fd_length;
+    proc->fds = malloc(proc->fd_capacity * sizeof(fs_node_t*));
+    for (size_t i = 0; i < proc->fd_capacity; i++) {
+        if (parent->fds[i]) {
+            proc->fds[i] = malloc(sizeof(fs_node_t));
+            memcpy(proc->fds[i], parent->fds[i], sizeof(fs_node_t));
+            open_fs(proc->fds[i], 0);
+        } else {
+            proc->fds[i] = 0;
+        }
+    }
     proc->tree_entry = tree_insert_value(parent->tree_entry, proc);
     proc->queue_node.process = proc;
     return proc;
@@ -118,11 +201,19 @@ void multitasking_init() {
 }
 
 void switch_next() {
+    while (delete_queue) {
+        struct process_queue* next = delete_queue->next;
+        process_t* process = delete_queue->process;
+        process_delete(process);
+        delete_queue = (volatile struct process_queue*) next;
+    }
+
     do {
         current_process = next_ready_process();
     } while (current_process->flags & PROC_FLAG_FINISHED);
 
     mmu_set_directory(current_process->thread.page_directory);
+    set_kernel_stack(current_process->image.stack);
     __sync_or_and_fetch(&current_process->flags, PROC_FLAG_STARTED);
     asm volatile("" ::: "memory");
 
@@ -177,6 +268,68 @@ volatile process_t* next_ready_process() {
     }
 
     return next;
+}
+
+void process_delete(process_t* process) {
+    if (!process || !process->tree_entry) {
+        return;
+    }
+
+    tree_destroy_and_merge(process->tree_entry);
+
+    free(process->name);
+    free(process->pwd);
+    free(process->fds);
+
+    for (int i = 1; i <= 9; ++i) {
+        mmu_release_frame(process->image.stack - 0x1000 * i);
+    }
+
+    mmu_free(process->thread.page_directory);
+    free(process);
+}
+
+void process_exit(int rval) {
+    current_process->status = rval;
+
+    // TODO: Check if process is scheduled
+//    struct process_queue* prev = 0;
+//    struct process_queue* last = 0;
+//    for (struct process_queue* queue = process_queue->process; queue;) {
+//        struct process_queue* next = queue->next;
+//
+//        process_t* queued = queue->process;
+//        if (queued == current_process) {
+//            if (prev) {
+//                prev->next = next;
+//            } else {
+//                process_queue = next;
+//            }
+//        } else {
+//            last = queue;
+//        }
+//
+//        prev = queue;
+//        queue = next;
+//    }
+//
+//    process_queue_end = last;
+
+    if (!(current_process->flags & PROC_FLAG_HAS_WAITERS)) {
+        current_process->queue_node.next = (struct process_queue*) delete_queue;
+        delete_queue = (volatile struct process_queue*) &current_process->queue_node;
+    }
+
+    for (size_t i = 0; i < current_process->fd_length; i++) {
+        if (current_process->fds[i]) {
+            close_fs(current_process->fds[i]);
+            free(current_process->fds[i]);
+            current_process->fds[i] = 0;
+        }
+    }
+
+    __sync_or_and_fetch(&current_process->flags, PROC_FLAG_FINISHED);
+    switch_next();
 }
 
 __attribute__((naked))

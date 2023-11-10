@@ -1,7 +1,8 @@
 .set MULTIBOOT_PAGE_ALIGN,   1<<0
 .set MULTIBOOT_MEM_INFO,     1<<1
+.set MULTIBOOT_GFX,          1<<2
 .set MULTIBOOT_HEADER_MAGIC, 0x1BADB002
-.set MULTIBOOT_HEADER_FLAGS, MULTIBOOT_PAGE_ALIGN | MULTIBOOT_MEM_INFO
+.set MULTIBOOT_HEADER_FLAGS, MULTIBOOT_PAGE_ALIGN | MULTIBOOT_MEM_INFO | MULTIBOOT_GFX
 .set MULTIBOOT_CHECKSUM,     -(MULTIBOOT_HEADER_MAGIC + MULTIBOOT_HEADER_FLAGS)
 
 .code32
@@ -21,6 +22,10 @@ multiboot:
     .long bss
     .long end
     .long start
+    .long 0
+    .long 0
+    .long 0
+    .long 32
 
 .section .stack, "aw", @nobits
 stack_bottom:

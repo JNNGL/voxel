@@ -28,4 +28,4 @@ uint8_t vga_terminal_get_color();
 void vga_terminal_init();
 void vga_terminal_putchar(char c);
 void vga_terminal_clear_terminal();
-uint8_t* vga_get_stack_buffer();
+uint8_t* vga_get_membuffer();

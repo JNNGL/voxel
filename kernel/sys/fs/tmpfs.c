@@ -28,7 +28,6 @@ static struct tmpfs_file* tmpfs_new_file(char* name) {
     f->mask = 0;
     f->uid = 0;
     f->gid = 0;
-    f->list_node.file = f;
     f->blocks = malloc(f->pointers * sizeof(uintptr_t*));
     for (size_t i = 0; i < f->pointers; ++i) {
         f->blocks[i] = 0;
@@ -40,8 +39,8 @@ static struct tmpfs_file* tmpfs_new_file(char* name) {
 static int symlink_tmpfs(fs_node_t* parent, char* target, char* name) {
     struct tmpfs_dir* d = (struct tmpfs_dir*) parent->device;
 
-    for (struct tmpfs_flist* node = d->files; node; node = node->next) {
-        struct tmpfs_file* f = node->file;
+    for (size_t i = 0; i < d->files_count; i++) {
+        struct tmpfs_file* f = d->files[i];
         if (!strcmp(name, f->name)) {
             return -EEXIST;
         }
@@ -54,8 +53,11 @@ static int symlink_tmpfs(fs_node_t* parent, char* target, char* name) {
     f->mask = 0777;
     f->uid = current_process->uid;
     f->gid = current_process->gid;
-    f->list_node.next = d->files;
-    d->files = &f->list_node;
+    if (d->files_count >= d->files_capacity) {
+        d->files_capacity += 8;
+        d->files = realloc(d->files, sizeof(struct tmpfs_file*) * d->files_capacity);
+    }
+    d->files[d->files_count++] = f;
     return 0;
 }
 
@@ -85,8 +87,10 @@ static struct tmpfs_dir* tmpfs_new_dir(const char* name, struct tmpfs_dir* paren
     d->mask = 0;
     d->uid = 0;
     d->gid = 0;
-    d->files = 0;
-    d->list_node.file = (struct tmpfs_file*) d;
+    d->parent = parent;
+    d->files_capacity = 8;
+    d->files_count = 0;
+    d->files = malloc(sizeof(struct tmpfs_file*) * d->files_capacity);
     return d;
 }
 
@@ -285,41 +289,38 @@ static fs_node_t* tmpfs_from_link(struct tmpfs_file* f) {
 
 static struct dirent* readdir_tmpfs(fs_node_t* node, size_t index) {
     struct tmpfs_dir* d = (struct tmpfs_dir*) node->device;
-    size_t i = 0;
-    if (index == 0) {
-        struct dirent* out = malloc(sizeof(struct dirent));
-        memset(out, 0, sizeof(struct dirent));
-        out->ino = 0;
-        strcpy(out->name, ".");
-        return out;
-    }
-
-    if (index == 1) {
-        struct dirent* out = malloc(sizeof(struct dirent));
-        memset(out, 0, sizeof(struct dirent));
-        out->ino = 0;
-        strcpy(out->name, "..");
-        return out;
-    }
-
-    index -= 2;
-
-    struct tmpfs_flist* current_entry = d->files;
-    for (uint32_t i = 0; i < index; i++) {
-        if (!current_entry) {
-            return 0;
+    if (d != tmpfs_root) {
+        if (index == 0) {
+            struct dirent *out = malloc(sizeof(struct dirent));
+            memset(out, 0, sizeof(struct dirent));
+            out->ino = 0;
+            strcpy(out->name, ".");
+            return out;
         }
 
-        current_entry = current_entry->next;
+        if (index == 1) {
+            struct dirent *out = malloc(sizeof(struct dirent));
+            memset(out, 0, sizeof(struct dirent));
+            out->ino = 0;
+            strcpy(out->name, "..");
+            return out;
+        }
+
+        index -= 2;
     }
 
-    if (!current_entry) {
+    if (index >= d->files_count) {
+        return 0;
+    }
+
+    struct tmpfs_file* f = d->files[index];
+    if (!f) {
         return 0;
     }
 
     struct dirent* dirent = malloc(sizeof(struct dirent));
-    strcpy(dirent->name, current_entry->file->name);
-    dirent->ino = (uintptr_t) current_entry->file;
+    strcpy(dirent->name, f->name);
+    dirent->ino = (uintptr_t) f;
     return dirent;
 }
 
@@ -330,8 +331,8 @@ static fs_node_t* finddir_tmpfs(fs_node_t* node, char* name) {
 
     struct tmpfs_dir* d = (struct tmpfs_dir*) node->device;
 
-    for (struct tmpfs_flist* node = d->files; node; node = node->next) {
-        struct tmpfs_file* f = node->file;
+    for (size_t i = 0; i < d->files_count; i++) {
+        struct tmpfs_file* f = d->files[i];
         if (!strcmp(name, f->name)) {
             switch (f->type) {
                 case TMPFS_TYPE_FILE: return tmpfs_from_file(f);
@@ -348,9 +349,8 @@ static fs_node_t* finddir_tmpfs(fs_node_t* node, char* name) {
 static int unlink_tmpfs(fs_node_t* node, char* name) {
     struct tmpfs_dir* d = (struct tmpfs_dir*) node->device;
 
-    struct tmpfs_flist* prev = 0;
-    for (struct tmpfs_flist* node = d->files; node; node = node->next) {
-        struct tmpfs_file* f = node->file;
+    for (size_t i = 0; i < d->files_count; i++) {
+        struct tmpfs_file* f = d->files[i];
         if (!strcmp(name, f->name)) {
             if (f->type == TMPFS_TYPE_DIR) {
                 if (((struct tmpfs_dir*) f)->files) {
@@ -360,17 +360,16 @@ static int unlink_tmpfs(fs_node_t* node, char* name) {
                 tmpfs_free_file(f);
             }
 
-            if (prev) {
-                prev->next = node->next;
-            } else {
-                d->files = node->next;
+            --d->files_count;
+            size_t entries_after = d->files_count - i;
+            if (entries_after) {
+                memmove(&d->files[i], &d->files[i + 1], sizeof(*d->files) * entries_after);
             }
 
+            free(f->name);
             free(f);
             return 0;
         }
-
-        prev = node;
     }
 
     return -ENOENT;
@@ -383,8 +382,8 @@ static int create_tmpfs(fs_node_t* parent, char* name, int mode) {
 
     struct tmpfs_dir* d = (struct tmpfs_dir*) parent->device;
 
-    for (struct tmpfs_flist* node = d->files; node; node = node->next) {
-        struct tmpfs_file* f = node->file;
+    for (size_t i = 0; i < d->files_count; i++) {
+        struct tmpfs_file* f = d->files[i];
         if (!strcmp(name, f->name)) {
             return -EEXIST;
         }
@@ -394,9 +393,11 @@ static int create_tmpfs(fs_node_t* parent, char* name, int mode) {
     f->mask = mode;
     f->uid = current_process->uid;
     f->gid = current_process->gid;
-    f->list_node.next = d->files;
-    d->files = &f->list_node;
-
+    if (d->files_count >= d->files_capacity) {
+        d->files_capacity += 8;
+        d->files = realloc(d->files, sizeof(struct tmpfs_file*) * d->files_capacity);
+    }
+    d->files[d->files_count++] = f;
     return 0;
 }
 
@@ -411,8 +412,8 @@ static int mkdir_tmpfs(fs_node_t* parent, char* name, int mode) {
 
     struct tmpfs_dir* d = (struct tmpfs_dir*) parent->device;
 
-    for (struct tmpfs_flist* node = d->files; node; node = node->next) {
-        struct tmpfs_file* f = node->file;
+    for (size_t i = 0; i < d->files_count; i++) {
+        struct tmpfs_file* f = d->files[i];
         if (!strcmp(name, f->name)) {
             return -EEXIST;
         }
@@ -422,9 +423,11 @@ static int mkdir_tmpfs(fs_node_t* parent, char* name, int mode) {
     out->mask = mode;
     out->uid = current_process->uid;
     out->gid = current_process->gid;
-    out->list_node.next = d->files;
-    d->files = &out->list_node;
-
+    if (d->files_count >= d->files_capacity) {
+        d->files_capacity += 8;
+        d->files = realloc(d->files, sizeof(struct tmpfs_file*) * d->files_capacity);
+    }
+    d->files[d->files_count++] = (struct tmpfs_file*) out;
     return 0;
 }
 

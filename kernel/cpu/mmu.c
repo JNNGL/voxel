@@ -1,5 +1,6 @@
 #include "mmu.h"
 
+#include <sys/process.h>
 #include <lib/string.h>
 
 #define PAGE_SHIFT     12
@@ -604,6 +605,49 @@ size_t mmu_count_user(pagemap_entry_t* pml) {
     }
 
     return out;
+}
+
+int mmu_validate_user(void* addr, size_t size, int flags) {
+    if (!addr && !(flags & MMU_PTR_NULL)) {
+        return 0;
+    }
+
+    if (size > 0x800000000000) {
+        return 0;
+    }
+
+    uintptr_t base = (uintptr_t) addr;
+    uintptr_t end = size ? (base + (size - 1)) : base;
+
+    uintptr_t page_base = base >> 12;
+    uintptr_t page_end = end >> 12;
+
+    for (uintptr_t page = page_base; page <= page_end; ++page) {
+        if ((page & 0xFFFF800000000) != 0 && (page & 0xFFFF800000000) != 0xFFFF800000000) {
+            return 0;
+        }
+
+        pagemap_entry_t* page_entry = mmu_lookup_frame_from(current_process->thread.page_directory, page << 12);
+        if (!page_entry) {
+            return 0;
+        }
+
+        if (!page_entry->present) {
+            return 0;
+        }
+
+        if (!page_entry->user) {
+            return 0;
+        }
+
+        if (!page_entry->writable && (flags & MMU_PTR_WRITE)) {
+            if (mmu_copy_on_write((uintptr_t) (page << 12))) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
 }
 
 size_t mmu_total_memory() {
