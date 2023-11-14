@@ -6,6 +6,10 @@
 #ifndef _FCNTL_H
 #define _FCNTL_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -47,8 +51,12 @@ struct flock {
 };
 
 int creat(const char* path, mode_t mode);
-// int fcntl(int, int, ...);
+int fcntl(int, int, ...); // TODO: Implementation
 int open(const char* path, int flags, ...);
 // int openat(int, const char*, int, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

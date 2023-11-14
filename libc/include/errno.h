@@ -6,6 +6,10 @@
 #ifndef _ERRNO_H
 #define _ERRNO_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define EPERM 1
 #define ENOENT 2
 #define ESRCH 3
@@ -137,7 +141,12 @@
 #define EKEYREJECTED 129
 #define EOWNERDEAD 130
 #define ENOTRECOVERABLE 131
+#define ENOTSUP 132
 
 extern int errno;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

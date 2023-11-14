@@ -6,6 +6,10 @@
 #ifndef _LIMITS_H
 #define _LIMITS_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define _LITTLE_ENDIAN
 
 #define PAGESIZE  4096
@@ -88,5 +92,9 @@
 #endif
 #define USHRT_MAX  65535
 #define WORD_BIT   __INT_WIDTH__
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -133,6 +133,7 @@ static char* _errlist[] = {
         [EKEYREJECTED] = "Key was rejected by service",
         [EOWNERDEAD] = "Owner died",
         [ENOTRECOVERABLE] = "State no recoverable",
+        [ENOTSUP] = "Not supported",
 };
 
 char* strerror(int err) {

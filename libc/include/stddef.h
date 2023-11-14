@@ -6,10 +6,18 @@
 #ifndef _STDDEF_H
 #define _STDDEF_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define NULL ((void*) 0)
 
 typedef long ptrdiff_t;
 typedef __WCHAR_TYPE__ wchar_t;
 typedef unsigned long size_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

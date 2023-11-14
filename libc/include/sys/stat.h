@@ -6,6 +6,10 @@
 #ifndef _SYS_STAT_H
 #define _SYS_STAT_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <sys/types.h>
 // TODO: #include <time.h>
 
@@ -18,9 +22,9 @@ struct stat {
     gid_t st_gid;
     dev_t st_rdev;
     off_t st_size;
-    time_t st_atim;
-    time_t st_mtim;
-    time_t st_ctim;
+    time_t st_atime;
+    time_t st_mtime;
+    time_t st_ctime;
     blksize_t st_blksize;
     blkcnt_t st_blocks;
 };
@@ -71,15 +75,19 @@ int chmod(const char* file, mode_t mode);
 int fstat(int fd, struct stat* stat);
 // int fstatat(int, const char* restrict, struct stat* restrict, int);
 // int futimens(int, const time_t[2]);
-int lstat(const char* restrict file, struct stat* restrict stat);
+int lstat(const char* /*restrict*/ file, struct stat* /*restrict*/ stat);
 int mkdir(const char* name, mode_t mode);
 // int mkdirat(int, const char*, mode_t);
 // int mkfifo(const char*, mode_t);
 // int mkfifoat(int, const char*, mode_t);
 // int mknod(const char*, mode_t, dev_t);
 // int mknodat(int, const char*, mode_t, dev_t);
-int stat(const char* restrict file, struct stat* restrict stat);
+int stat(const char* /*restrict*/ file, struct stat* /*restrict*/ stat);
 mode_t umask(mode_t mode);
 // int utimensat(int, const char*, const time_t[2], int);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

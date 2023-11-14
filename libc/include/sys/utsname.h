@@ -6,6 +6,10 @@
 #ifndef _SYS_UTSNAME_H
 #define _SYS_UTSNAME_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define _SYS_NAMELEN 256
 
 struct utsname {
@@ -17,5 +21,9 @@ struct utsname {
 };
 
 int uname(struct utsname* name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

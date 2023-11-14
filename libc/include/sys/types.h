@@ -6,6 +6,10 @@
 #ifndef _SYS_TYPES_H
 #define _SYS_TYPES_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stddef.h>
 
 typedef unsigned long blkcnt_t;
@@ -28,5 +32,9 @@ typedef long suseconds_t;
 typedef long time_t;
 typedef int timer_t;
 typedef int uid_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

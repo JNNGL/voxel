@@ -6,6 +6,10 @@
 #ifndef _SYS_WAIT_H
 #define _SYS_WAIT_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // TODO: #include <signal.h>
 #include <sys/types.h>
 
@@ -26,5 +30,9 @@
 // pid_t wait(int*);
 // int waitid(idtype_t, id_t, siginfo_t*, int);
 // pid_t waitpid(pid_t, int*, int);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

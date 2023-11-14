@@ -6,6 +6,10 @@
 #ifndef _DIRENT_H
 #define _DIRENT_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <sys/types.h>
 
 struct dirent {
@@ -26,5 +30,9 @@ struct dirent* readdir(DIR*);
 // int scandir(const char*, struct dirent***, int(*)(const struct dirent*), int(*)(const struct dirent**, const struct dirent**));
 // void seekdir(DIR*, long);
 // long telldir(DIR*);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

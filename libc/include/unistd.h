@@ -6,6 +6,10 @@
 #ifndef _UNISTD_H
 #define _UNISTD_H 1
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <sys/types.h>
 #include <stdio.h>
 
@@ -83,7 +87,7 @@ off_t lseek(int fd, off_t off, int whence);
 // ssize_t pread(int, void*, size_t, off_t);
 // ssize_t pwrite(int, const void*, size_t, off_t);
 ssize_t read(int fd, void* ptr, size_t len);
-ssize_t readlink(const char* restrict name, char* restrict buf, size_t len);
+ssize_t readlink(const char* /*restrict*/ name, char* /*restrict*/ buf, size_t len);
 // ssize_t readlinkat(int, const char* restrict, char* restrict, size_t);
 int rmdir(const char* name);
 // int setegid(gid_t);
@@ -109,5 +113,9 @@ int symlink(const char* target, const char* name);
 int unlink(const char* path);
 // int unlinkat(int, const char*, int);
 ssize_t write(int fd, const void* ptr, size_t len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
