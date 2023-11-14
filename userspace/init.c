@@ -18,7 +18,8 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
 
-    while (1);
+    syscall_waitpid(child);
 
+    // TODO: Reboot?
     return 0;
 }

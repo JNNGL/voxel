@@ -49,6 +49,15 @@ int execve(const char* path, char* const argv[], char* const envp[]) {
     return out;
 }
 
+int execvp(const char* path, char* const argv[]) {
+    if (!path) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    return execve(path, argv, environ); // TODO
+}
+
 pid_t fork() {
     return syscall_fork();
 }

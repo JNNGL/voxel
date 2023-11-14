@@ -43,7 +43,7 @@ void _exit(int code);
 // int execlp(const char*, const char*, ...);
 int execv(const char* path, char* const argv[]);
 int execve(const char* path, char* const argv[], char* const envp[]);
-// int execvp(const char*, char* const[]);
+int execvp(const char* path, char* const argv[]);
 // int faccessat(int, const char*, int, int);
 // int fchdir(int);
 // int fchown(int, uid_t, gid_t);

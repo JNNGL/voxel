@@ -35,11 +35,11 @@ typedef struct {
 
 void _Exit(int code);
 // long a64l(const char*);
-// void abort();
-// int abs(int);
-// int atexit(void(*)(void));
+void abort();
+int abs(int x);
+int atexit(void(*func)(void));
 // double atof(const char*);
-// int atoi(const char*);
+int atoi(const char* s);
 // long atol(const char*);
 // long long atoll(const char*);
 // void* bsearch(const void*, const void*, size_t, size_t, int(*)(const void*, const void*));
@@ -49,7 +49,7 @@ void* calloc(size_t size, size_t nmemb);
 // double erand48(unsigned short[3]);
 void exit(int code);
 void free(void* ptr);
-// char* getenv(const char*);
+char* getenv(const char* s);
 // int getsubopt(char**, char* const*, char**);
 // int grantpt(int);
 // char* initstate(unsigned, char*, size_t);

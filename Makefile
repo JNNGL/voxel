@@ -17,7 +17,7 @@ KERNEL_LDFLAGS=$(GENERAL_LDFLAGS) -T link.ld
 LIBC_DIR=libc
 LIBC_CRT_SOURCES=$(call rwildcard,$(LIBC_DIR)/,*.c) $(call rwildcard,$(LIBC_DIR)/,*.s)
 LIBC_CRT_OBJECTS=$(LIBC_CRT_SOURCES:%=$(BUILDDIR)/%.o)
-CRT_SOURCES=$(LIBC_DIR)/crt/crt0.s $(LIBC_DIR)/crt/crti.s $(LIBC_DIR)/crt/crtn.s $(LIBC_DIR)/crt/_main.c
+CRT_SOURCES=$(LIBC_DIR)/crt/crt0.s $(LIBC_DIR)/crt/crti.s $(LIBC_DIR)/crt/crtn.s
 CRT_OBJECTS=$(CRT_SOURCES:%=$(BUILDDIR)/%.o) $(shell $(CC) -print-file-name=crtbegin.o) $(shell $(CC) -print-file-name=crtend.o)
 LIBC_SOURCES=$(filter-out $(CRT_SOURCES),$(LIBC_CRT_SOURCES))
 LIBC_OBJECTS=$(LIBC_SOURCES:%=$(BUILDDIR)/%.o)
@@ -32,6 +32,8 @@ CC=x86_64-elf-gcc
 LD=x86_64-elf-ld
 AS=x86_64-elf-as
 AR=x86_64-elf-ar
+
+USER_CC=x86_64-voxel-gcc
 
 all: kernel link libc userspace iso
 
@@ -68,6 +70,14 @@ install_headers:
 	mkdir -p $(RAMDISK_BASE)/usr
 	cp -rf libc/include $(RAMDISK_BASE)/usr
 
+install_lib: install_headers libc
+	rm -rf $(RAMDISK_BASE)/usr/lib
+	mkdir -p $(RAMDISK_BASE)/usr/lib
+	cp -f $(BUILDDIR)/libc/crt/crt0.s.o $(RAMDISK_BASE)/usr/lib/crt0.o
+	cp -f $(BUILDDIR)/libc/crt/crti.s.o $(RAMDISK_BASE)/usr/lib/crti.o
+	cp -f $(BUILDDIR)/libc/crt/crtn.s.o $(RAMDISK_BASE)/usr/lib/crtn.o
+	cp -f $(BUILDDIR)/libc.a $(RAMDISK_BASE)/usr/lib/libc.a
+
 .PHONY: ramdiskfs_tool
 ramdiskfs_tool:
 	$(HOST_CC) $(HOST_CFLAGS) -o $(BUILDDIR)/ramdisk.mkfs ramdiskfs_tool/ramdiskfs.c ramdiskfs_tool/main.c
@@ -90,25 +100,25 @@ $(BUILDDIR)/%.s.o: %.s
 	@mkdir -p $(@D)
 	$(AS) $($(word 2,$(subst /, ,$@))_ASFLAGS) $< -o $@
 
-$(BUILDDIR)/userspace/init:
+$(BUILDDIR)/userspace/init: install_lib
 	@mkdir -p $(@D)
-	$(CC) -I $(LIBC_DIR)/include userspace/init.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+	$(USER_CC) userspace/init.c -o $@
 
-$(BUILDDIR)/userspace/sh:
+$(BUILDDIR)/userspace/sh: install_lib
 	@mkdir -p $(@D)
-	$(CC) -I $(LIBC_DIR)/include userspace/sh.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+	$(USER_CC) userspace/sh.c -o $@
 
-$(BUILDDIR)/userspace/hello:
+$(BUILDDIR)/userspace/hello: install_lib
 	@mkdir -p $(@D)
-	$(CC) -I $(LIBC_DIR)/include userspace/hello.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+	$(USER_CC) userspace/hello.c -o $@
 
-$(BUILDDIR)/userspace/ls:
+$(BUILDDIR)/userspace/ls: install_lib
 	@mkdir -p $(@D)
-	$(CC) -I $(LIBC_DIR)/include userspace/ls.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+	$(USER_CC) userspace/ls.c -o $@
 
-$(BUILDDIR)/userspace/uname:
+$(BUILDDIR)/userspace/uname: install_lib
 	@mkdir -p $(@D)
-	$(CC) -I $(LIBC_DIR)/include userspace/uname.c -Wl,--whole-archive $(BUILDDIR)/libc.a $(CRT_OBJECTS) -o $@ -nostdlib -ffreestanding -nostdinc
+	$(USER_CC) userspace/uname.c -o $@
 
 .PHONY: userspace
 userspace: $(BUILDDIR)/userspace/init $(BUILDDIR)/userspace/sh $(BUILDDIR)/userspace/hello $(BUILDDIR)/userspace/ls $(BUILDDIR)/userspace/uname
